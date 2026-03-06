@@ -1,0 +1,42 @@
+FROM maven:3.9.5-eclipse-temurin-21 AS builder
+
+WORKDIR /usr/src/monorepo
+
+
+COPY src/libs/protobuf-schemas src/libs/protobuf-schemas
+
+COPY src/apps/fintrack_gateway/pom.xml src/apps/fintrack_gateway/pom.xml
+
+
+WORKDIR /usr/src/monorepo/src/apps/fintrack_gateway
+RUN mvn dependency:go-offline -B
+
+
+COPY src/apps/fintrack_gateway/src ./src
+
+
+RUN mvn clean package -DskipTests
+
+
+FROM eclipse-temurin:21-jre-alpine AS runtime
+
+# Create a non-root user for security 
+RUN addgroup -S fintrack_group && adduser -S fintrack_admin -G fintrack_group
+USER fintrack_admin
+
+WORKDIR /app
+
+
+COPY --from=builder /usr/src/monorepo/src/apps/fintrack_gateway/target/fintrack-gateway-0.1.0-SNAPSHOT.jar ./gateway.jar
+
+
+EXPOSE 8080
+
+# Configure JVM for high-performance Async Reactor execution
+# -XX:+UseZGC: The Z Garbage Collector
+# -XX:MaxRAMPercentage: Tells Java to use 75% of the container's RAM, leaving 25% for the OS.
+ENTRYPOINT ["java", \
+            "-XX:+UseZGC", \
+            "-XX:MaxRAMPercentage=75.0", \
+            "-Djava.security.egd=file:/dev/./urandom", \
+            "-jar", "gateway.jar"]

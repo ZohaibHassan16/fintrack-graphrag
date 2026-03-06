@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package enterprise.fintrack;
+
+option java_multiple_files = true;
+option java_package = "com.enterprise.fintrack.grpc";
+option java_outer_classname = "EmbeddingServiceProto";
+
+service EmbeddingService {
+    rpc GenerateEmbedding (EmbeddingRequest) returns (EmbeddingResponse);
+    
+    rpc GenerateAnswer (RAGRequest) returns (stream RAGResponse);
+}
+
+message EmbeddingRequest {
+    string query_text = 1;
+    string model_version = 2; 
+}
+
+message EmbeddingResponse {
+    repeated float vector = 1;
+    int32 dimensions = 2;
+    int64 processing_time_ms = 3;
+}
+
+
+message RAGRequest {
+    string query = 1;                   
+    repeated string context_chunks = 2; 
+}
+
+
+message RAGResponse {
+    string token = 1;              
+    bool is_final = 2;                 
+}

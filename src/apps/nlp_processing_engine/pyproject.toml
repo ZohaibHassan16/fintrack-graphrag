@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "nlp_processing_engine"
+version = "0.1.0"
+description = "Semantic chunking and LLM NER pipeline for FinTrack"
+authors = ["Zohaib Hassnain"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.104.0"
+uvicorn = "^0.23.2"
+pydantic = "^2.4.2"
+torch = "^2.1.0"
+transformers = "^4.34.0"
+langchain = "^0.0.315"
+spacy = "^3.7.2"
+confluent-kafka = "^2.3.0"
+neo4j = "^5.14.0"
+numpy = "^1.26.0"
+sentence-transformers = "^2.2.2"
+prometheus-client = "^0.18.0"
+accelerate = "^0.24.1"
+grpcio = "^1.59.0"
+grpcio-tools = "^1.59.0"
+zstandard = "^0.22.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

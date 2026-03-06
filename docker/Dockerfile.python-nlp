@@ -1,0 +1,52 @@
+
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 AS builder
+
+
+RUN apt-get update && apt-get install -y \
+    python3.11 \
+    python3.11-venv \
+    python3-pip \
+    curl \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV POETRY_HOME="/opt/poetry" \
+    POETRY_VIRTUALENVS_IN_PROJECT=true \
+    POETRY_NO_INTERACTION=1
+
+RUN curl -sSL https://install.python-poetry.org | python3.11 -
+ENV PATH="$POETRY_HOME/bin:$PATH"
+
+WORKDIR /build
+COPY src/apps/nlp_processing_engine/pyproject.toml src/apps/nlp_processing_engine/poetry.lock* ./
+
+
+RUN poetry env use python3.11 && \
+    poetry install --no-root --only main
+
+
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 AS runtime
+
+RUN apt-get update && apt-get install -y python3.11 && rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user
+RUN useradd -m -s /bin/bash fintrack_admin
+USER fintrack_admin
+
+WORKDIR /app
+
+
+COPY --from=builder --chown=fintrack_admin:fintrack_admin /build/.venv /app/.venv
+
+
+COPY --chown=fintrack_admin:fintrack_admin src/apps/nlp_processing_engine/src ./src
+
+EXPOSE 8000
+
+
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONPATH="/app/src"
+
+RUN python -m spacy download en_core_web_sm
+
+ENTRYPOINT ["python", "src/main.py"]

@@ -1,0 +1,54 @@
+FROM rust:1.88-slim-bookworm AS chef
+
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    pkg-config \
+    libssl-dev \
+    zlib1g-dev \
+    libzstd-dev \
+    clang \
+    libcurl4-openssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN cargo install cargo-chef --locked
+WORKDIR /usr/src/monorepo
+
+
+FROM chef AS planner
+COPY . .
+RUN cargo update -p home --precise 0.5.11
+RUN cargo chef prepare --recipe-path recipe.json
+
+
+FROM chef AS builder
+COPY --from=planner /usr/src/monorepo/recipe.json recipe.json
+
+
+RUN cargo chef cook --release --recipe-path recipe.json
+
+COPY . .
+RUN cargo update -p home --precise 0.5.11
+RUN cargo build --release --manifest-path src/apps/ingestion_service/Cargo.toml
+
+
+FROM debian:bookworm-slim AS runtime
+
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    tzdata \
+    curl \
+    libcurl4 \
+    libzstd1 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r fintrack_group && useradd -r -g fintrack_group fintrack_admin
+USER fintrack_admin
+
+WORKDIR /app
+
+COPY --from=builder /usr/src/monorepo/target/release/ingestion_service .
+
+ENTRYPOINT ["./ingestion_service"]

@@ -1,0 +1,217 @@
+networks:
+  fintrack_internal_net:
+    driver: bridge
+
+volumes:
+  neo4j_data:
+  postgres_data:
+  kafka_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+services:
+
+
+  postgres-cluster:
+    image: postgres:15-alpine
+    container_name: postgres-staging
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: staging_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - fintrack_internal_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d staging_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis-cluster:
+    image: redis:7-alpine
+    container_name: redis-cache
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - fintrack_internal_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  kafka-cluster:
+    image: bitnamilegacy/kafka:3.5.1
+    container_name: kafka-broker
+    environment:
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka-cluster:9093
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka-cluster:9092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/bitnami/kafka
+    networks:
+      - fintrack_internal_net
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  neo4j-cluster:
+    image: neo4j:5.15.0-enterprise
+    container_name: neo4j-knowledge-graph
+    environment:
+      NEO4J_AUTH: neo4j/secure_password
+      NEO4J_ACCEPT_LICENSE_AGREEMENT: "yes"
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_memory_pagecache_size: 1G
+      NEO4J_dbms_memory_heap_initial__size: 1G
+      NEO4J_dbms_memory_heap_max__size: 2G
+    ports:
+      - "7474:7474" 
+      - "7687:7687" 
+    volumes:
+      - neo4j_data:/data
+    networks:
+      - fintrack_internal_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+
+  
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: prometheus-metrics
+    volumes:
+      - ./k8s/namespaces/observability/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - fintrack_internal_net
+
+  grafana:
+    image: grafana/grafana:10.0.3
+    container_name: grafana-dashboards
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - fintrack_internal_net
+    depends_on:
+      - prometheus
+
+  
+
+  ingestion-tier:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.rust-ingestion
+    container_name: rust-ingestion-worker
+    environment:
+      - KAFKA_BROKERS=kafka-cluster:9092
+      - REDIS_URL=redis://redis-cluster:6379
+      - POSTGRES_URL=postgres://user:pass@postgres-cluster:5432/staging_db
+      - RUST_LOG=debug
+    networks:
+      - fintrack_internal_net
+    depends_on:
+      kafka-cluster:
+        condition: service_healthy
+      postgres-cluster:
+        condition: service_healthy
+
+  nlp-compute-tier:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.python-nlp
+    container_name: python-nlp-engine
+    tty: true 
+    environment:
+      - KAFKA_BROKERS=kafka-cluster:9092
+      - NEO4J_URI=bolt://neo4j-cluster:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=secure_password
+      - PYTHONUNBUFFERED=1 
+    deploy:
+      resources:
+        limits:
+          memory: 8G 
+        reservations:
+          memory: 4G
+    ports:
+      - "8000:8000" 
+      - "50051:50051" 
+    volumes:
+      - ./certs:/certs
+    networks:
+      - fintrack_internal_net
+    depends_on:
+      kafka-cluster:
+        condition: service_healthy
+      neo4j-cluster:
+        condition: service_healthy
+
+  gateway-tier:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.java-gateway
+    container_name: java-netty-gateway
+    environment:
+      - NEO4J_URI=bolt://neo4j-cluster:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=secure_password
+      - EMBEDDING_SERVICE_HOST=python-nlp-engine
+      - EMBEDDING_SERVICE_PORT=50051
+      - GATEWAY_PORT=8080
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./certs:/certs
+    networks:
+      - fintrack_internal_net
+    depends_on:
+      nlp-compute-tier:
+        condition: service_started
+
+  producer-tier:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.rust-producer
+    container_name: rust-producer-service
+    environment:
+      - DATABASE_URL=postgres://user:pass@postgres-cluster:5432/staging_db
+      - RUST_LOG=info
+    volumes:
+  
+      - ./data/sp500_ciks.txt:/app/data/sp500_ciks.txt 
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50' 
+    networks:
+      - fintrack_internal_net
+    depends_on:
+      postgres-cluster:
+        condition: service_healthy

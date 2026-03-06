@@ -1,0 +1,63 @@
+/* 1. MANDATORY TAILWIND DIRECTIVES (Must be at the very top) */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 2. GLOBAL VIEWPORT LOCK */
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  /* Hard-lock the viewport to prevent the "scrolling down" bug */
+  html, 
+  body, 
+  #root {
+    height: 100vh !important;
+    width: 100vw !important;
+    overflow: hidden !important;
+    margin: 0;
+    padding: 0;
+    position: fixed; /* Prevents mobile 'bounce' and overscroll */
+  }
+  
+  body {
+    @apply bg-slate-950 text-slate-100 antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  
+  /* Ensure React Flow canvas fills its container properly */
+  .react-flow {
+    height: 100% !important;
+    width: 100% !important;
+  }
+}
+
+/* 3. THEME VARIABLES (Keep your existing colors) */
+@layer base {
+  :root {
+    --background: 222 47% 4%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 6%;
+    --primary: 186 100% 50%;
+    --accent: 262 83% 58%;
+    --border: 217 33% 17%;
+    --radius: 0.5rem;
+  }
+}
+
+/* 4. COMPONENT STYLES (Existing Glassmorphism & Animations) */
+@layer components {
+  .glass {
+    @apply bg-slate-900/80 backdrop-blur-xl border border-slate-700/50;
+  }
+  
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-out;
+  }
+  
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}

@@ -1,0 +1,27 @@
+﻿FROM rust:1.88-alpine AS builder
+
+
+RUN apk add --no-cache build-base
+
+WORKDIR /usr/src/monorepo
+
+
+COPY . .
+
+
+RUN cargo update -p home --precise 0.5.11
+
+
+RUN cargo build --release --manifest-path src/apps/producer_service/Cargo.toml
+
+FROM alpine:3.19 AS runtime
+
+
+RUN apk --no-cache add ca-certificates
+
+WORKDIR /app
+
+
+COPY --from=builder /usr/src/monorepo/target/release/producer_service .
+
+ENTRYPOINT ["./producer_service"]

@@ -1,0 +1,27 @@
+[package]
+name = "ingestion_service"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+tokio.workspace = true
+reqwest = { workspace = true, features = ["gzip"] }
+dashmap.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+rdkafka.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+sqlx.workspace = true
+async-trait.workspace = true
+rand.workspace = true
+chrono.workspace = true
+encoding_rs.workspace = true
+regex.workspace = true       
+lazy_static.workspace = true 
+htmlize = { version = "1.0", features = ["unescape"] }
+
+# Domain specific dependencies for HTML/XBRL extraction parsing
+scraper = "0.18"
+html2text = "0.12"
