@@ -27,6 +27,7 @@ the financial knowledge graph, retrieves the exact relevant semantic chunks,
 and streams back AI-generated, fully cited and auditable financial analysis in real-time. 
 
 It is explicitly engineered to survive the SEC's dirty data formats.
+
 ---
 
 ## [0x00] ARCHITECTURE TOPOLOGY
